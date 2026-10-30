@@ -41,3 +41,5 @@ https://teachablemachine.withgoogle.com/models/u6A7u-03t/
 
 ## Project status
 Website source code and documentation are prepared. Before submission, publish the repository and test both webcam and picture-upload modes with examples of the fruits included in the model's training classes.
+
+##Webpage:https://ridafatima120606-ui.github.io/Fruit-Detector/
