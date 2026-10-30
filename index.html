@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fruit Detector | Teachable Machine</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, sans-serif; color: #243047; background: #f4f7f2; }
+    header { background: #286b45; color: white; text-align: center; padding: 28px 16px; }
+    header h1 { margin: 0 0 8px; font-size: 2rem; }
+    header p { margin: 0; }
+    main { width: min(960px, 92%); margin: 28px auto; }
+    .panel { background: white; padding: 22px; margin-bottom: 20px; border-radius: 14px; box-shadow: 0 5px 22px rgba(0,0,0,.07); }
+    h2 { margin-top: 0; color: #286b45; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 16px 0; }
+    button { border: 0; border-radius: 8px; padding: 11px 16px; background: #286b45; color: white; cursor: pointer; font-size: 1rem; }
+    button.secondary { background: #526174; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    input[type=file] { max-width: 100%; }
+    #camera, #preview { display: block; max-width: 100%; width: min(100%, 480px); max-height: 360px; object-fit: contain; margin: 14px auto; border-radius: 10px; background: #eef1ed; }
+    #status { min-height: 24px; color: #526174; }
+    .prediction { display: grid; grid-template-columns: minmax(100px, 1fr) 2fr 58px; gap: 10px; align-items: center; margin: 13px 0; }
+    .track { height: 14px; background: #e6ebe5; border-radius: 20px; overflow: hidden; }
+    .bar { height: 100%; background: #36a269; width: 0%; }
+    .hint { color: #667085; font-size: .92rem; line-height: 1.5; }
+    footer { text-align: center; padding: 20px; color: #667085; font-size: .9rem; }
+    @media (max-width: 560px) { .prediction { grid-template-columns: 1fr 1.5fr 48px; font-size: .9rem; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🍎 Fruit Detector</h1>
+    <p>Identify fruits using your webcam or an uploaded picture</p>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>About the project</h2>
+      <p>
+        Fruit Detector is an image-classification project made with Google Teachable Machine
+        and TensorFlow.js. Use your webcam for live predictions or upload a fruit picture.
+        The model returns the fruit classes it was trained to recognize.
+      </p>
+      <p class="hint">For webcam use, allow camera permission when your browser asks. Camera access generally requires HTTPS or localhost; GitHub Pages provides HTTPS.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Option 1: Detect fruit with webcam</h2>
+      <div class="actions">
+        <button id="startCamera">Start webcam</button>
+        <button id="stopCamera" class="secondary" disabled>Stop webcam</button>
+      </div>
+      <div id="cameraContainer"></div>
+      <p class="hint">Point the camera at one fruit. Predictions update automatically while the webcam is running.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Option 2: Detect fruit from a picture</h2>
+      <div class="actions">
+        <input id="imageInput" type="file" accept="image/*" />
+        <button id="predictImage" disabled>Identify fruit</button>
+      </div>
+      <img id="preview" alt="Uploaded fruit preview" hidden />
+    </section>
+
+    <section class="panel">
+      <h2>Prediction results</h2>
+      <p id="status" role="status">Loading fruit detection model…</p>
+      <div id="results" aria-live="polite"></div>
+      <button id="clearResults" class="secondary" type="button">Clear results</button>
+    </section>
+  </main>
+
+  <footer>Fruit Detector · Google Teachable Machine · TensorFlow.js · HTML, CSS and JavaScript</footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+  <script>
+    // Existing Google Teachable Machine model supplied for this project.
+    const MODEL_URL = "https://teachablemachine.withgoogle.com/models/u6A7u-03t/";
+
+    const startCameraButton = document.getElementById("startCamera");
+    const stopCameraButton = document.getElementById("stopCamera");
+    const cameraContainer = document.getElementById("cameraContainer");
+    const imageInput = document.getElementById("imageInput");
+    const predictImageButton = document.getElementById("predictImage");
+    const preview = document.getElementById("preview");
+    const statusText = document.getElementById("status");
+    const results = document.getElementById("results");
+    const clearResultsButton = document.getElementById("clearResults");
+
+    let model = null;
+    let webcam = null;
+    let webcamRunning = false;
+    let imageObjectUrl = null;
+
+    async function loadModel() {
+      try {
+        statusText.textContent = "Loading your fruit detection model…";
+        model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
+        statusText.textContent = "Model loaded. Start the webcam or upload a fruit picture.";
+        predictImageButton.disabled = !preview.src;
+      } catch (error) {
+        console.error(error);
+        statusText.textContent = "Unable to load the model. Check the Teachable Machine model link and internet connection.";
+      }
+    }
+
+    function showPredictions(predictions) {
+      results.innerHTML = "";
+      predictions.sort((a, b) => b.probability - a.probability);
+      predictions.forEach((item) => {
+        const percent = (item.probability * 100).toFixed(1);
+        const row = document.createElement("div");
+        row.className = "prediction";
+        const name = document.createElement("strong");
+        name.textContent = item.className;
+        const track = document.createElement("div");
+        track.className = "track";
+        const bar = document.createElement("div");
+        bar.className = "bar";
+        bar.style.width = percent + "%";
+        track.appendChild(bar);
+        const value = document.createElement("span");
+        value.textContent = percent + "%";
+        row.append(name, track, value);
+        results.appendChild(row);
+      });
+      if (predictions.length) {
+        statusText.textContent = "Best match: " + predictions[0].className +
+          " (" + (predictions[0].probability * 100).toFixed(1) + "% confidence)";
+      }
+    }
+
+    async function startWebcam() {
+      if (!model || webcamRunning) return;
+      try {
+        webcam = new tmImage.Webcam(400, 300, true);
+        await webcam.setup();
+        await webcam.play();
+        webcamRunning = true;
+        cameraContainer.innerHTML = "";
+        cameraContainer.appendChild(webcam.canvas);
+        startCameraButton.disabled = true;
+        stopCameraButton.disabled = false;
+        statusText.textContent = "Webcam running. Hold a fruit in front of the camera…";
+        webcamLoop();
+      } catch (error) {
+        console.error(error);
+        statusText.textContent = "Could not start webcam. Allow camera permission and use this site over HTTPS.";
+        if (webcam) {
+          try { webcam.stop(); } catch (_) {}
+          webcam = null;
+        }
+      }
+    }
+
+    async function webcamLoop() {
+      if (!webcamRunning || !webcam) return;
+      webcam.update();
+      try {
+        const predictions = await model.predict(webcam.canvas);
+        if (webcamRunning) showPredictions(predictions);
+      } catch (error) {
+        console.error(error);
+        statusText.textContent = "Webcam prediction failed. Try again.";
+      }
+      if (webcamRunning) requestAnimationFrame(webcamLoop);
+    }
+
+    function stopWebcam() {
+      webcamRunning = false;
+      if (webcam) {
+        webcam.stop();
+        webcam = null;
+      }
+      cameraContainer.innerHTML = "";
+      startCameraButton.disabled = !model;
+      stopCameraButton.disabled = true;
+      statusText.textContent = model ? "Webcam stopped. You can upload a picture or restart the webcam." : "Model is not loaded.";
+    }
+
+    startCameraButton.addEventListener("click", startWebcam);
+    stopCameraButton.addEventListener("click", stopWebcam);
+
+    imageInput.addEventListener("change", () => {
+      const file = imageInput.files && imageInput.files[0];
+      results.innerHTML = "";
+      if (!file) {
+        preview.hidden = true;
+        predictImageButton.disabled = true;
+        return;
+      }
+      if (!file.type.startsWith("image/")) {
+        statusText.textContent = "Please select an image file.";
+        return;
+      }
+      if (imageObjectUrl) URL.revokeObjectURL(imageObjectUrl);
+      imageObjectUrl = URL.createObjectURL(file);
+      preview.onload = () => {
+        preview.hidden = false;
+        predictImageButton.disabled = !model;
+        statusText.textContent = "Picture ready. Click Identify fruit.";
+      };
+      preview.src = imageObjectUrl;
+    });
+
+    predictImageButton.addEventListener("click", async () => {
+      if (!model || !preview.src) return;
+      predictImageButton.disabled = true;
+      statusText.textContent = "Identifying fruit in the picture…";
+      try {
+        const predictions = await model.predict(preview);
+        showPredictions(predictions);
+      } catch (error) {
+        console.error(error);
+        statusText.textContent = "Picture prediction failed. Please try another image.";
+      } finally {
+        predictImageButton.disabled = false;
+      }
+    });
+
+    clearResultsButton.addEventListener("click", () => {
+      results.innerHTML = "";
+      statusText.textContent = model ? "Ready for another fruit detection." : "Model is loading…";
+    });
+
+    window.addEventListener("beforeunload", () => {
+      if (webcam) webcam.stop();
+      if (imageObjectUrl) URL.revokeObjectURL(imageObjectUrl);
+    });
+
+    loadModel();
+  </script>
+</body>
+</html>
